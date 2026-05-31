@@ -167,45 +167,45 @@
         return `${dagNaam} ${dagNummer} ${maandNaam}`;
     }
 
-    async function updateAgenda() {
+async function updateAgenda() {
         try {
-            // Cache buster tegen het vasthouden van oude gegevens
             const uniqueUrl = `${csvUrl}&t=${new Date().getTime()}`;
             const response = await fetch(uniqueUrl);
             const rawData = await response.text();
             
-            // Splits de rijen (Rij 1 = datums, Rij 2 = info)
+            // Splits de data netjes op in rijen
             const rows = rawData.split(/\r?\n/).map(row => splitCSVLine(row));
             
             const agendaContainer = document.getElementById('agenda-lijst');
             if (!agendaContainer) return;
 
-            // We hebben minstens 2 rijen nodig (datums op index 0, info op index 1 van onze bruikbare data)
-            // Let op: aangezien je aangeeft dat rij 1 in Excel voor titels is, bevat rows[0] de datums en rows[1] de info.
+            // We hebben data nodig vanaf Rij 2 (index 1)
             if (rows.length < 2) {
                 agendaContainer.innerHTML = '<div class="no-data">Geen agenda-items gevonden</div>';
                 return;
             }
-
-            const dateRow = rows[0];
-            const infoRow = rows[1];
             
-            const vandaan = new Date();
-            // Zet de tijd van 'vandaag' op 00:00:00 om enkel op datum te vergelijken (vandaag telt nog mee!)
-            vandaan.setHours(0, 0, 0, 0);
+            const vandaag = new Date();
+            vandaag.setHours(0, 0, 0, 0);
 
             let agendaItems = [];
 
-            // We starten te lezen vanaf index 1 (Kolom B in Excel is index 1 in de array)
-            for (let col = 1; col < dateRow.length; col++) {
-                if (!dateRow[col]) continue;
+            // VERTICALE FIX: We lopen van boven naar beneden door de rijen (vanaf i = 1, dus Rij 2)
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                // Sla lege rijen over of rijen die niet minstens Kolom A en B hebben
+                if (!row || row.length < 2) continue;
 
-                const parsedDate = parseSheetDate(dateRow[col]);
-                const infoText = infoRow[col] ? infoRow[col].replace(/"/g, '').trim() : '';
+                const dateValue = row[0]; // Kolom A: Datum
+                const infoValue = row[1]; // Kolom B: Info
 
-                // Sla over als de datum ongeldig is, leeg is, of in het verleden ligt
+                if (!dateValue || !infoValue) continue;
+
+                const parsedDate = parseSheetDate(dateValue);
+                const infoText = infoValue.replace(/"/g, '').trim();
+
                 if (!parsedDate || infoText === '' || infoText === '-') continue;
-                if (parsedDate < vandaan) continue; 
+                if (parsedDate < vandaag) continue; // Verberg datums uit het verleden
 
                 agendaItems.push({
                     dateObj: parsedDate,
@@ -213,16 +213,15 @@
                 });
             }
 
-            // REGEL: Sorteer ALTIJD chronologisch, ongeacht invoervolgorde
+            // REGEL: Sorteer ALTIJD chronologisch, ongeacht de invoervolgorde in Sheets
             agendaItems.sort((a, b) => a.dateObj - b.dateObj);
 
-            // Bouw de HTML op
             if (agendaItems.length === 0) {
                 agendaContainer.innerHTML = '<div class="no-data">Geen geplande activiteiten</div>';
                 return;
             }
 
-            // Toon maximaal de eerste 7 à 8 items zodat het niet van het scherm loopt
+            // Bouw de HTML-rijen op (maximaal 8 items op het scherm)
             let agendaHtml = '';
             const maxItems = Math.min(agendaItems.length, 8); 
 
@@ -242,9 +241,9 @@
 
         } catch (err) {
             console.error("Fout bij het ophalen van de agenda:", err);
+            document.getElementById('agenda-lijst').innerHTML = '<div class="no-data">Fout bij inladen data. Mogelijks staat de CSV-link niet open.</div>';
         }
     }
-
     // Start en automatische verversing om de 2 minuten
     document.addEventListener("DOMContentLoaded", function() {
         updateAgenda();
